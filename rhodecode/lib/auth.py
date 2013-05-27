@@ -27,6 +27,7 @@ import random
 import logging
 import traceback
 import hashlib
+import imaplib
 
 from tempfile import _RandomNameSequence
 from decorator import decorator
@@ -183,6 +184,31 @@ def authenticate(username, password):
                                                               user.password):
                 log.info('user %s authenticated correctly' % username)
                 return True
+           
+            else:
+                user_obj = User.get_by_username(username, case_insensitive=True)
+                rc_config = RhodeCodeSetting.get_app_settings()
+
+                if user_obj is not None and str2bool(rc_config.get('rhodecode_imap_fallback')):
+                    log.info('falling back to imap login')
+                    imap_host = rc_config.get('rhodecode_imap_login_hostname')  
+                    imap_email = username + rc_config.get('rhodecode_imap_append_hostname') 
+                    log.info('trying imap login for %s against host %s' % (imap_email, imap_host))
+
+                    imap_login_test = imaplib.IMAP4_SSL(imap_host)
+                    try:
+                        imap_login_test.login(imap_email, password)
+                        log.info('imap login succeeded')
+                        imap_login_test.logout()
+                        return True
+                    except(Exception,):
+                        log.info('imap login failed')
+                        imap_login_test.logout()
+
+                else:
+                    log.info('not falling back to imap - fallback disabled')
+
+
         else:
             log.warning('user %s tried auth but is disabled' % username)
 
